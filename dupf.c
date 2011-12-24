@@ -7,6 +7,9 @@
 #include <string.h>
 #include <errno.h>
 #include <openssl/md5.h>
+#include <sys/mman.h>
+#include <fcntl.h>
+
 
 unsigned char md5sum[MD5_DIGEST_LENGTH];
 
@@ -44,7 +47,7 @@ void free_file (file_t *file) {
     while(file) {
         file_t *next = file->next;
         free(file->name);
-		free(file->md5sum);
+		//free(file->md5sum);
         free(file);
         file = next;
     }
@@ -86,6 +89,30 @@ void get_arguments(int argc, char** argv, args_t* arguments) {
     }
 }
 
+void print_md5sum(unsigned char* md) {
+    int i;
+    for(i=0; i <MD5_DIGEST_LENGTH; i++) {
+            printf("%02x",md[i]);
+    }
+	printf("\n");
+}
+
+char* md5sum_file(char *filename, off_t file_size) {
+    int file_descript;
+    char* file_buffer;
+
+    file_descript = open(filename, O_RDONLY);
+    if(file_descript < 0) exit(-1);
+
+	file_buffer = mmap(0, file_size, PROT_READ, MAP_SHARED, file_descript, 0);
+    MD5((unsigned char*) file_buffer, file_size, md5sum);
+	close(file_descript);
+	//printf("%s ", filename);
+	//print_md5_sum(md5sum);
+
+	return md5sum;
+}
+
 void traverse_fsize_list (fsize_t *size_db) {
     fsize_t *s;
     file_t *f;
@@ -94,10 +121,11 @@ void traverse_fsize_list (fsize_t *size_db) {
         printf("%ld(%d)\n", s->size, s->count);
         for(f = s->file; f != NULL; f = f->next) {
             if(f->next == NULL) {
-                printf("└─%s(%s)\n", f->name, f->md5sum);
+                printf("└─%s ", f->name);
             } else {
-                printf("├─%s(%s)\n", f->name, f->md5sum);
+                printf("├─%s ", f->name);
             }
+			print_md5sum(f->md5sum);
         }
     }
 }
@@ -142,9 +170,7 @@ void md5sum_same_size(fsize_t *size_db) {
 			free_single_size(s, size_db);
 		} else {
 			for(f = s->file; f != NULL; f = f->next) {
-				// find md5sums
-				MD5(f->name, s->size, md5sum);
-				f->md5sum = strdup(md5sum);
+				f->md5sum = strdup(md5sum_file(f->name, s->size));
 			}
 
 		}
