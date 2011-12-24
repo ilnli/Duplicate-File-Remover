@@ -6,6 +6,10 @@
 #include <sys/stat.h>
 #include <string.h>
 #include <errno.h>
+#include <openssl/md5.h>
+
+unsigned char md5sum[MD5_DIGEST_LENGTH];
+
 
 #define NAME "dupf"
 #define VERSION "0.1"
@@ -25,25 +29,22 @@ typedef struct args {
 
 typedef struct _file {
     struct _file *next;
+    char *md5sum;
     char *name;
 } file_t;
 
 typedef struct _fsize {
     struct _fsize *next;
     off_t size; 
+	int count;
     struct _file *file;
 } fsize_t;
-
-typedef struct _md5sum {
-    struct _md5sum *next;
-    char *md5sum;
-    struct _file *file;
-} md5sum_t;
 
 void free_file (file_t *file) {
     while(file) {
         file_t *next = file->next;
         free(file->name);
+		free(file->md5sum);
         free(file);
         file = next;
     }
@@ -85,17 +86,17 @@ void get_arguments(int argc, char** argv, args_t* arguments) {
     }
 }
 
-void traverse_fsize_list (fsize_t *fsize) {
+void traverse_fsize_list (fsize_t *size_db) {
     fsize_t *s;
     file_t *f;
 
-    for(s = fsize; s != NULL; s = s->next) {
-        printf("%ld\n", s->size);
+    for(s = size_db; s != NULL; s = s->next) {
+        printf("%ld(%d)\n", s->size, s->count);
         for(f = s->file; f != NULL; f = f->next) {
             if(f->next == NULL) {
-                printf("└─%s\n", f->name);
+                printf("└─%s(%s)\n", f->name, f->md5sum);
             } else {
-                printf("├─%s\n", f->name);
+                printf("├─%s(%s)\n", f->name, f->md5sum);
             }
         }
     }
@@ -112,6 +113,42 @@ fsize_t* find_size(off_t size, fsize_t *current) {
 
     // current will be NULL
     return current;
+}
+
+void free_single_size (fsize_t *target, fsize_t *fsize) {
+	fsize_t *target_next = target->next;
+
+	free_file(target->file);
+	while(fsize) {
+		fsize_t *next = fsize->next;
+		if(next == target) {
+			fsize_t *next = fsize->next;
+			fsize->next = target_next;
+			//free(target);
+			break;
+		}
+		fsize = next;
+	}
+}
+
+void md5sum_same_size(fsize_t *size_db) {
+	fsize_t *s;
+	file_t *f;
+
+	for(s = size_db; s != NULL; s = s->next) {
+		if(s->count == 1) {
+			// remove list with single file, don't do it for first
+			// element (i.e 0) otherwise we'll have dangling pointer
+			free_single_size(s, size_db);
+		} else {
+			for(f = s->file; f != NULL; f = f->next) {
+				// find md5sums
+				MD5(f->name, s->size, md5sum);
+				f->md5sum = strdup(md5sum);
+			}
+
+		}
+	}
 }
 
 void sort_with_size(char* filename, fsize_t *size_db) {
@@ -137,7 +174,7 @@ void sort_with_size(char* filename, fsize_t *size_db) {
             current->next = NULL;
             found_size->file = current;
         }
-
+		found_size->count++;
     } else {
         fsize_t *current = malloc(sizeof(fsize_t));
         if(!current) {
@@ -155,6 +192,7 @@ void sort_with_size(char* filename, fsize_t *size_db) {
         }
         current->file->name = strdup(filename);
         current->file->next = NULL;
+		current->count = 1;
     }
 }
 
@@ -204,12 +242,14 @@ int main(int argc, char **argv) {
     // Initialize the object
     size_db.file = NULL;
     size_db.size = 0;
+	size_db.count = 0;
     size_db.next = NULL;
     
     get_arguments(argc, argv, &arguments);
 
     printf("Scanning directory: %s\n", arguments.dir);
     get_files_list(arguments.dir, &size_db);
-    //traverse_fsize_list(&size_db);
+	md5sum_same_size(&size_db);
+    traverse_fsize_list(&size_db);
 }
 
