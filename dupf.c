@@ -39,7 +39,7 @@ typedef struct _file {
 typedef struct _fsize {
     struct _fsize *next;
     off_t size; 
-	int count;
+    int count;
     struct _file *file;
 } fsize_t;
 
@@ -47,7 +47,7 @@ void free_file (file_t *file) {
     while(file) {
         file_t *next = file->next;
         free(file->name);
-		//free(file->md5sum);
+        //free(file->md5sum);
         free(file);
         file = next;
     }
@@ -94,32 +94,36 @@ void print_md5sum(unsigned char* md) {
     for(i=0; i <MD5_DIGEST_LENGTH; i++) {
             printf("%02x",md[i]);
     }
-	printf("\n");
+    printf("\n");
 }
 
 char* md5sum_file(char *filename, off_t file_size) {
     int file_descript;
     char* file_buffer;
+    memset(md5sum, '\0', sizeof(md5sum));
 
     file_descript = open(filename, O_RDONLY);
-    if(file_descript < 0) exit(-1);
+    if(file_descript < 0) {
+        fprintf(stderr, "ERROR: Unable to open file %s (%s)\n", filename, strerror(errno));
+        exit(EXIT_FAILURE);
+    }
 
-	file_buffer = mmap(0, file_size, PROT_READ, MAP_SHARED, file_descript, 0);
+    file_buffer = mmap(0, file_size, PROT_READ, MAP_SHARED, file_descript, 0);
     MD5((unsigned char*) file_buffer, file_size, md5sum);
-	close(file_descript);
-	//printf("%s ", filename);
-	//print_md5_sum(md5sum);
+    close(file_descript);
+    //printf("%s ", filename);
+    //print_md5_sum(md5sum);
 
-	return md5sum;
+    return md5sum;
 }
 
 void remove_nonduplicate(fsize_t *size_db) {
-	int i;
-	while(size_db != NULL) {
-		for(i = 1; i <= size_db->count; i++) {
-			
-		}
-	}
+    int i;
+    while(size_db != NULL) {
+        for(i = 1; i <= size_db->count; i++) {
+            
+        }
+    }
 }
 
 void traverse_fsize_list (fsize_t *size_db) {
@@ -134,7 +138,7 @@ void traverse_fsize_list (fsize_t *size_db) {
             } else {
                 printf("├─%s ", f->name);
             }
-			print_md5sum(f->md5sum);
+            print_md5sum(f->md5sum);
         }
     }
 }
@@ -153,37 +157,39 @@ fsize_t* find_size(off_t size, fsize_t *current) {
 }
 
 void free_single_size (fsize_t *target, fsize_t *fsize) {
-	fsize_t *target_next = target->next;
+    fsize_t *target_next = target->next;
 
-	free_file(target->file);
-	while(fsize) {
-		fsize_t *next = fsize->next;
-		if(next == target) {
-			fsize_t *next = fsize->next;
-			fsize->next = target_next;
-			//free(target);
-			break;
-		}
-		fsize = next;
-	}
+    while(fsize) {
+        PDEBUG(stderr, "BEFORE addr:%p (next->%p), target:%p (next->%p), size:%ld, count:%d, file:%p\n", fsize, fsize->next, target, target_next, fsize->size, fsize->count, fsize->file);
+        fsize_t *next = fsize->next;
+        if(next == target) {
+            PDEBUG(stderr, "  Deleting\n");
+            fsize->next = target_next;
+            //free_file(target->file);
+            //free(target);
+            PDEBUG(stderr, "AFTER addr:%p (next->%p), target:%p (next->%p), size:%ld, count:%d, file:%p\n", fsize, fsize->next, target, target_next, fsize->size, fsize->count, fsize->file);
+            break;
+        }
+        fsize = next;
+    }
 }
 
 void md5sum_same_size(fsize_t *size_db) {
-	fsize_t *s;
-	file_t *f;
+    fsize_t *s;
+    file_t *f;
 
-	for(s = size_db; s != NULL; s = s->next) {
-		if(s->count == 1) {
-			// remove list with single file, don't do it for first
-			// element (i.e 0) otherwise we'll have dangling pointer
-			free_single_size(s, size_db);
-		} else {
-			for(f = s->file; f != NULL; f = f->next) {
-				f->md5sum = strdup(md5sum_file(f->name, s->size));
-			}
+    for(s = size_db; s != NULL; s = s->next) {
+        if(s->count == 1) {
+            // remove list with single file, don't do it for first
+            // element (i.e 0) otherwise we'll have dangling pointer
+            free_single_size(s, size_db);
+        } else {
+            for(f = s->file; f != NULL; f = f->next) {
+                f->md5sum = strdup(md5sum_file(f->name, s->size));
+            }
 
-		}
-	}
+        }
+    }
 }
 
 void sort_with_size(char* filename, fsize_t *size_db) {
@@ -209,7 +215,7 @@ void sort_with_size(char* filename, fsize_t *size_db) {
             current->next = NULL;
             found_size->file = current;
         }
-		found_size->count++;
+        found_size->count++;
     } else {
         fsize_t *current = malloc(sizeof(fsize_t));
         if(!current) {
@@ -227,7 +233,7 @@ void sort_with_size(char* filename, fsize_t *size_db) {
         }
         current->file->name = strdup(filename);
         current->file->next = NULL;
-		current->count = 1;
+        current->count = 1;
     }
 }
 
@@ -259,7 +265,7 @@ void get_files_list(char* path, fsize_t *size_db) {
             if(entry->d_type == DT_DIR) {
                 get_files_list(apath, size_db);
             } else if(entry->d_type == DT_REG) {
-                PDEBUG("File: %s/%s\n", path, entry->d_name);        
+                PDEBUG("File: %s/%s\n", path, entry->d_name);
                 sort_with_size(apath, size_db);
             }
             free(apath);
@@ -277,14 +283,14 @@ int main(int argc, char **argv) {
     // Initialize the object
     size_db.file = NULL;
     size_db.size = 0;
-	size_db.count = 0;
+    size_db.count = 0;
     size_db.next = NULL;
-    
+
     get_arguments(argc, argv, &arguments);
 
     printf("Scanning directory: %s\n", arguments.dir);
     get_files_list(arguments.dir, &size_db);
-	md5sum_same_size(&size_db);
+    md5sum_same_size(&size_db);
     traverse_fsize_list(&size_db);
 }
 
