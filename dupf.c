@@ -113,6 +113,15 @@ char* md5sum_file(char *filename, off_t file_size) {
 	return md5sum;
 }
 
+void remove_nonduplicate(fsize_t *size_db) {
+	int i;
+	while(size_db != NULL) {
+		for(i = 1; i <= size_db->count; i++) {
+			
+		}
+	}
+}
+
 void traverse_fsize_list (fsize_t *size_db) {
     fsize_t *s;
     file_t *f;
