@@ -109,6 +109,10 @@ char* md5sum_file(char *filename, off_t file_size) {
     }
 
     file_buffer = mmap(0, file_size, PROT_READ, MAP_SHARED, file_descript, 0);
+    if(file_buffer < 0) {
+        fprintf(stderr, "ERROR: Unable to load file (%s).\n", strerror(errno));
+        exit(EXIT_FAILURE);
+    }
     MD5((unsigned char*) file_buffer, file_size, md5sum);
     close(file_descript);
     //printf("%s ", filename);
