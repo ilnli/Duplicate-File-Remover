@@ -47,7 +47,7 @@ void free_file (file_t *file) {
     while(file) {
         file_t *next = file->next;
         free(file->name);
-        //free(file->md5sum);
+        free(file->md5sum);
         free(file);
         file = next;
     }
@@ -100,6 +100,7 @@ void print_md5sum(unsigned char* md) {
 char* md5sum_file(char *filename, off_t file_size) {
     int file_descript;
     char* file_buffer;
+
     memset(md5sum, '\0', sizeof(md5sum));
 
     file_descript = open(filename, O_RDONLY);
@@ -109,14 +110,14 @@ char* md5sum_file(char *filename, off_t file_size) {
     }
 
     file_buffer = mmap(0, file_size, PROT_READ, MAP_SHARED, file_descript, 0);
-    if(file_buffer < 0) {
-        fprintf(stderr, "ERROR: Unable to load file (%s).\n", strerror(errno));
+    if(file_buffer == MAP_FAILED) {
+        fprintf(stderr, "ERROR: Unable to load %s (%s).\n", filename, strerror(errno));
         exit(EXIT_FAILURE);
     }
     MD5((unsigned char*) file_buffer, file_size, md5sum);
+
+    munmap(file_buffer, file_size);
     close(file_descript);
-    //printf("%s ", filename);
-    //print_md5_sum(md5sum);
 
     return md5sum;
 }
@@ -164,14 +165,17 @@ void free_single_size (fsize_t *target, fsize_t *fsize) {
     fsize_t *target_next = target->next;
 
     while(fsize) {
-        PDEBUG(stderr, "BEFORE addr:%p (next->%p), target:%p (next->%p), size:%ld, count:%d, file:%p\n", fsize, fsize->next, target, target_next, fsize->size, fsize->count, fsize->file);
         fsize_t *next = fsize->next;
         if(next == target) {
-            PDEBUG(stderr, "  Deleting\n");
             fsize->next = target_next;
+
+            /*
+             * BUG: Memory leak here, but we can't free it because it
+             * will cause the caller loop variable to illegal memory addr.
+             */
+
             //free_file(target->file);
-            //free(target);
-            PDEBUG(stderr, "AFTER addr:%p (next->%p), target:%p (next->%p), size:%ld, count:%d, file:%p\n", fsize, fsize->next, target, target_next, fsize->size, fsize->count, fsize->file);
+            //free(*target);
             break;
         }
         fsize = next;
@@ -183,11 +187,15 @@ void md5sum_same_size(fsize_t *size_db) {
     file_t *f;
 
     for(s = size_db; s != NULL; s = s->next) {
-        if(s->count == 1) {
-            // remove list with single file, don't do it for first
-            // element (i.e 0) otherwise we'll have dangling pointer
+        if(s->count == 1 && s != size_db) {
+
+            /*
+             * Remove list with single file, don't do it for first
+             * element (i.e 0) otherwise we'll have dangling pointer
+             */
+
             free_single_size(s, size_db);
-        } else {
+        } else if(s->size != 0) {
             for(f = s->file; f != NULL; f = f->next) {
                 f->md5sum = strdup(md5sum_file(f->name, s->size));
             }
@@ -211,7 +219,11 @@ void sort_with_size(char* filename, fsize_t *size_db) {
         }
         current->name = strdup(filename);
 
-        // Check because the first object will not have memory allocated for file structure
+        /*
+         * Check because the first object will not have 
+         * memory allocated for file structure
+         */
+
         if(found_size->file) {
             current->next = found_size->file->next;
             found_size->file->next = current;
@@ -296,5 +308,6 @@ int main(int argc, char **argv) {
     get_files_list(arguments.dir, &size_db);
     md5sum_same_size(&size_db);
     traverse_fsize_list(&size_db);
+
 }
 
