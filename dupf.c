@@ -87,6 +87,13 @@ void get_arguments(int argc, char** argv, args_t* arguments) {
                 exit(EXIT_FAILURE);
         }
     }
+
+	// Exit if not argument is given
+	if(optind == 1) {
+		usage();
+		exit(EXIT_FAILURE);
+	}
+
 }
 
 void print_md5sum(unsigned char* md) {
